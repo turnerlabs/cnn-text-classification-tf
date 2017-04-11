@@ -44,6 +44,28 @@ def load_data_and_labels(positive_data_file, negative_data_file):
     y = np.concatenate([positive_labels, negative_labels], 0)
     return [x_text, y]
 
+def load_combined_data_and_labels(data_file):
+    """
+    Loads MR polarity data from files, splits the data into words and generates labels.
+    Returns split sentences and labels.
+    """
+    # Load data from files
+    examples = list(open(data_file, "r").readlines())
+    examples = [s.split(",") for s in examples]
+    # Split by words
+    text = [clean_str(s[1]) for s in examples]
+    labels = [s[0] for s in examples]
+    converted_labels = []
+    # Generate labels
+    for label in labels:
+        if label == 0:
+            converted_labels.append([1, 0])
+        else:
+            converted_labels.append([0, 1])
+
+    converted_labels = np.concatenate([converted_labels], 0)
+
+    return [text, converted_labels]
 
 def batch_iter(data, batch_size, num_epochs, shuffle=True):
     """
