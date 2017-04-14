@@ -6,15 +6,17 @@ import os
 import time
 import datetime
 import data_helpers
+from sys import argv
 from text_cnn import TextCNN
 from tensorflow.contrib import learn
+from gcloud import storage
 
 # Parameters
 # ==================================================
 
 # Data loading params
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
-tf.flags.DEFINE_string("data_file", "./data/book-reviews/data.csv", "Data source for the book review data.")
+tf.flags.DEFINE_string("data_file", "data/book-reviews/data.csv", "Data source for the book review data.")
 
 # Model Hyperparameters
 tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
@@ -40,16 +42,24 @@ for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value))
 print("")
 
+LOCAL_FILE='book-reviews.csv'
+GS_FILE='data/book-reviews/data.csv'
+GS_BUCKET='cloud-arch-mlengine'
+
 
 # Data Preparation
 # ==================================================
 
 # Load data
 print("Loading data...")
-x_text, y = data_helpers.load_combined_data_and_labels(FLAGS.data_file)
-
-print x_text[0]
-print y[0]
+client = storage.Client()
+bucket = client.get_bucket(GS_BUCKET)
+blob = storage.Blob(FLAGS.data_file, bucket)
+contents = blob.download_as_string()
+target = open(LOCAL_FILE, 'w')
+target.write(contents)
+target.close()
+x_text, y = data_helpers.load_combined_data_and_labels(LOCAL_FILE)
 
 # Build vocabulary
 max_document_length = max([len(x.split(" ")) for x in x_text])
@@ -180,8 +190,12 @@ with tf.Graph().as_default():
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_step(x_dev, y_dev, writer=dev_summary_writer)
-                print("")
+                eval_batches = data_helpers.batch_iter(
+                    list(zip(x_dev, y_dev)), FLAGS.batch_size, FLAGS.num_epochs)
+                for eval_batch in eval_batches:
+                    x_dev, y_dev = zip(*eval_batch)
+                    dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                    print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
